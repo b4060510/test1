@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>소화기 분류기</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f9;
+            padding: 20px;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        #webcam-container {
+            width: 100%;
+            max-width: 300px; /* 모바일에 적합한 너비 */
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        video {
+            width: 100%;
+            border-radius: 10px;
+        }
+        .result {
+            margin-top: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            max-width: 300px; /* 모바일에 적합한 너비 */
+            word-wrap: break-word; /* 긴 텍스트가 잘리도록 */
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>소화기 분류기</h1>
+    <p>Start 버튼을 눌러 소화기를 카메라에 가져다 대세요.</p>
+
+    <button id="startButton">시작</button>
+
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+    <div class="result" id="result"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script type="text/javascript">
+        const URL = "./my_model/"; // 모델 파일의 경로
+
+        let model, webcam, labelContainer, maxPredictions;
+
+        document.getElementById('startButton').addEventListener('click', async function() {
+            document.getElementById('startButton').disabled = true;
+            document.getElementById('startButton').innerText = '로딩 중...';
+
+            await init();
+            document.getElementById('startButton').style.display = 'none';
+        });
+
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            const constraints = {
+                video: {
+                    facingMode: { exact: "environment" }, // 후면 카메라 사용
+                    width: { ideal: 300 },
+                    height: { ideal: 300 }
+                }
+            };
+
+            webcam = new tmImage.Webcam(300, 300, true); // 너비, 높이, 반전
+            await webcam.setup(constraints); // 웹캠 접근 요청
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                labelContainer.appendChild(document.createElement("div"));
+            }
+        }
+
+        async function loop() {
+            webcam.update(); // 웹캠 프레임 업데이트
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            let topPrediction = prediction[0]; // 가장 높은 확률의 예측
+
+            const classPrediction = topPrediction.className + ": " + topPrediction.probability.toFixed(2);
+            labelContainer.childNodes[0].innerHTML = classPrediction;
+
+            if (topPrediction.className === 'foam') {
+                displayFoamMessage();
+            } else if (topPrediction.className === 'powder') {
+                displayPowderMessage();
+            } else {
+                document.getElementById('result').innerHTML = "<p style='color:red;'>알 수 없는 소화기 종류입니다.</p>";
+            }
+        }
+
+        function displayFoamMessage() {
+            document.getElementById('result').innerHTML = `
+                <h3>폼(Foam) 소화기</h3>
+                <p>A급 화재: 일반화재</p>
+                <p>B급 화재: 유류화재(알코올, 유기 용제, 석유류, 가스 등 액체 화재)</p>
+                <ul>
+                    <li>1. 소화기 레버패킹 확인</li>
+                    <li>2. 밖에 손상된 부위 확인</li>
+                    <li>3. 손잡이 고착 확인</li>
+                    <li>4. 연차검사 스티커 확인</li>
+                </ul>`;
+        }
+
+        function displayPowderMessage() {
+            document.getElementById('result').innerHTML = `
+                <h3>파우더 소화기</h3>
+                <p>A급 화재, B급 화재, C급 화재, F급 화재, K급 화재</p>
+                <ul>
+                    <li>1. 소화기의 부식 및 손상 여부를 육안으로 검사</li>
+                    <li>2. 안전 핀과 Tamper Seal이 장착되어 있는지 확인</li>
+                    <li>3. 압력게이지의 바늘이 녹색부분을 나타내는지 확인</li>
+                    <li>4. 소화기의 작동 지침이 명확하고 읽을 수 있는지 확인</li>
+                    <li>5. 배출 호스를 분리하고 막힘 및 부식 여부를 확인</li>
+                    <li>6. 소화 밸브가 잘 동작하는지 확인</li>
+                    <li>7. 소화기 무게를 측정하고 서비스 라벨에 기록</li>
+                    <li>8. 소화기의 무게가 10% 이상 감소한 경우 조사 및 재충전하기</li>
+                    <li>9. 소화기를 청결하게 관리하기</li>
+                    <li>10. 파우더 소화기의 경우 수명은 10년 주기</li>
+                </ul>`;
+        }
+    </script>
+</body>
+</html>
